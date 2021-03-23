@@ -1,8 +1,7 @@
 import torch.nn as nn
 import torch 
 import math
-
-
+import logging
 
 # custom weights initialization called on netG and netD
 def weights_init(m):
@@ -21,35 +20,25 @@ def format_batch(data, real_label, device):
 
     return b_data, label
 
-# Normalization on every element of input latent vector
-class PixelNorm(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        return x / torch.sqrt(torch.mean(x ** 2, dim=1, keepdim=True) + 1e-8)
-
 # Define a hook to perform he initialization every step
 def hook_he_uniform(module, input):
+    
+    logging.info("Executing hook_he_uniform")
+
+    def scale(m):
+        classname = m.__class__.__name__
+        
+        if classname.find('Linear') != -1:
+            fan_in = m.weight.data.size(1) * m.weight.data[0][0].numel()
+            
+            m.weights = m.weight * math.sqrt(2 / fan_in)
 
     def init_weights(m):
-        nn.init.kaiming_uniform_(m.weight.data, mode='fan_in', nonlinearity='relu')
-
-    module.apply(init_weights)
-
-# Uniformly set the hyperparameters of Linears
-# "We initialize all weights of the convolutional, fully-connected, 
-# and affine transform layers using N(0, 1)"
-# 5/13: Apply scaled weights
-class SLinear(nn.Module):
-    def __init__(self, dim_in, dim_out):
-        super().__init__()
-
-        self.linear = nn.Linear(dim_in, dim_out)
-        self.linear.weight.data.normal_()
-        self.linear.bias.data.zero_()
-
-        self.linear.register_forward_pre_hook(hook_he_uniform)
+        classname = m.__class__.__name__
         
-    def forward(self, x):
-        return self.linear(x)
+        if classname.find('Linear') != -1:
+            logging.info("Class Name: {}".format(classname))
+            nn.init.kaiming_uniform_(m.weight.data, mode='fan_in', nonlinearity='relu')
+
+    module.apply(scale)
+
