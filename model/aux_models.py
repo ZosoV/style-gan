@@ -4,6 +4,7 @@ from torch.nn.modules.conv import Conv2d
 from torch.nn.modules.linear import Linear
 from model.utils import hook_he_uniform
 import torch.nn as nn
+import torch.nn.functional as F
 import torch
 import math
 
@@ -54,10 +55,8 @@ class Scale_B(nn.Module):
         return result 
 
 class ModDemodConvLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, dim_latent, upsampling = False):
+    def __init__(self, in_channels, out_channels):
         super().__init__()
-        if upsampling: 
-            self.upsample = nn.Upsample(scale_factor=2,mode='bilinear')
         self.convolution = nn.Conv2d(in_channels, out_channels, 3, padding=1)
 
     def modulate(self, weights, style):
@@ -77,8 +76,8 @@ class ModDemodConvLayer(nn.Module):
     def forward(self, input_tensor, style, upsampling = False):
         # Style
         if upsampling:
-            result = self.upsample(input_tensor)
-
+            result = F.interpolate(input_tensor,scale_factor=2, mode='bilinear', align_corners=False)
+            
         # Before to forward the input_tensor to convolution layer
         # we need to modulate and demodulate the weights
         self.convolution.weight = self.modulate(self.convolution.weight.data,style)
@@ -100,7 +99,7 @@ class EarlyStyleBlock(nn.Module):
     def __init__(self, in_channel, out_channel, nz):
         super().__init__()
 
-        self.conv = ModDemodConvLayer(in_channel, out_channel, nz)
+        self.conv = ModDemodConvLayer(in_channel, out_channel)
         self.scaled_noise = Scale_B(out_channel)
         self.style = FC_A(nz, in_channel)
         self.lrelu = nn.LeakyReLU(0.2)
@@ -125,11 +124,11 @@ class StyleBlock(nn.Module):
     def __init__(self, in_channel, out_channel, nz):
         super().__init__()
 
-        self.conv1 = ModDemodConvLayer(in_channel, out_channel, nz, upsampling=True)
+        self.conv1 = ModDemodConvLayer(in_channel, out_channel)
         self.scaled_noise1 = Scale_B(out_channel)
         self.style1 = FC_A(nz, in_channel)
 
-        self.conv2 = ModDemodConvLayer(out_channel, out_channel, nz)
+        self.conv2 = ModDemodConvLayer(out_channel, out_channel)
         self.scaled_noise2 = Scale_B(out_channel)
         # Note the input channels now is denoted by out channel
         self.style2 = FC_A(nz, out_channel)
@@ -153,7 +152,7 @@ class StyleBlock(nn.Module):
 
         return result
 
-class ConvBlock(nn.Module):
+class ResidualConvBlock(nn.Module):
     '''
     Used to construct progressive discriminator
     '''
@@ -169,13 +168,19 @@ class ConvBlock(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(in_channel, out_channel, size_kernel1, padding=padding1),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(out_channel, out_channel, size_kernel2, padding=padding2),
+            nn.Conv2d(out_channel, out_channel, size_kernel2, stride = 2, padding=padding2),
             nn.LeakyReLU(0.2)
         )
+
+        self.adjust_fmp = nn.Conv2d(in_channel, out_channel, 1, padding=0)
     
-    def forward(self, image):
-        # Downsample now proxyed by discriminator
-        # result = nn.functional.interpolate(image, scale_factor=0.5, mode="bilinear", align_corners=False)
+    def forward(self, input_tensor):
         # Conv
-        result = self.conv(image)
+        result = self.conv(input_tensor)
+
+        downsampling = F.interpolate(input_tensor, scale_factor=0.5, mode="bilinear", align_corners=False)
+        downsampling = self.adjust_fmp(downsampling)
+
+        result = result + downsampling
+
         return result

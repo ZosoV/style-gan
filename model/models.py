@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
-from torch.nn.modules import upsampling
-from model.aux_models import FC_A, PixelNorm, Scale_B, StyleBlock, EarlyStyleBlock
+from torch.nn.modules.linear import Linear
+from model.aux_models import PixelNorm, Scale_B, StyleBlock, EarlyStyleBlock, ResidualConvBlock
 import logging
 
 class MappingNetwork(nn.Module):
@@ -67,24 +67,29 @@ class Generator(nn.Module):
 
         return result
 
-# class Discriminator(nn.Module):
-#     def __init__(self, ndf, nc):
-#         super(Discriminator, self).__init__()
-#         self.convs  = nn.ModuleList([
-#             ConvBlock(16, 32, 3, 1),
-#             ConvBlock(32, 64, 3, 1),
-#             ConvBlock(64, 128, 3, 1),
-#             ConvBlock(128, 256, 3, 1),
-#             ConvBlock(256, 512, 3, 1),
-#             ConvBlock(512, 512, 3, 1),
-#             ConvBlock(512, 512, 3, 1),
-#             ConvBlock(512, 512, 3, 1),
-#             ConvBlock(513, 512, 3, 1, 4, 0)
-#         ])
+class Discriminator(nn.Module):
+    def __init__(self, nc_resolution, final_resolution):
+        super(Discriminator, self).__init__()
+        self.from_rgb = nn.Conv2d(3, nc_resolution[0][0], 1)
 
-#         self.fc = SLinear(512, 1)
+        convs = []
+        for nc_in, nc_out in nc_resolution:
+            convs.append(ResidualConvBlock(nc_in, nc_out, 3, 1))
+        self.convs  = nn.ModuleList(convs)
+
+        self.fcs = nn.Sequential(
+            Linear(nc_resolution[-1][1] * final_resolution, nc_resolution[-1][1]),
+            Linear(nc_resolution[-1][1], 1)
+        )
         
-#         self.n_layer = 9 # 9 layers network
+    def forward(self, input_tensor):
+        
+        result = self.from_rgb(input_tensor)
 
-#     def forward(self, input):
-#         return self.main(input)
+        for conv in self.convs:
+            result = conv(result)
+
+        result = torch.flatten(result)
+
+        result = self.fcs(result)
+        return result
