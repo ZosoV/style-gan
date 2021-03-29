@@ -1,1 +1,13 @@
 stuff/
+.cache
+.ipynb_checkpoints
+model/__pycache__/
+.bash_history
+.config/
+.ipython/
+.jupyter/
+.local/
+.npm/
+.python_history
+.virtual_documents/
+
