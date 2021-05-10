@@ -2,7 +2,7 @@
 
 The following reproduction was performed to the Eastern European Machine Learning Summer School 2021, "Deep Learning and Reinforcement Learning".
 
-The reproduced articles is [Image2StyleGAN: How to Embed Images Into the StyleGAN Latent Space?](https://arxiv.org/abs/1904.03189)
+The reproduced article is [Image2StyleGAN: How to Embed Images Into the StyleGAN Latent Space?](https://arxiv.org/abs/1904.03189)
 
 This reproduction consists of two notebooks where you can find the source code together with a detailed explanation of each part.
 
