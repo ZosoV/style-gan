@@ -23,7 +23,7 @@ def generate_samples(num_samples, G, device):
     # 2. Mapping w-space samples to p-space
     X = nn.LeakyReLU(negative_slope=5.0)(X)
 
-    return X
+    return X.squeeze(1)
 
 def apply_PCA(samples, q = 512):
     """Perform the PCA of samples X, and return relevant tensors for the embedding algorithm
