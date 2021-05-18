@@ -11,3 +11,5 @@ model/__pycache__/
 .python_history
 .virtual_documents/
 
+dnnlib/__pycache__/
+torch_utils/ops/__pycache__/
