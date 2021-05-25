@@ -5,12 +5,13 @@ import torch.nn as nn
 from torchvision import transforms
 
 import model.model_utils as mu
+import model.p_space as p_space
+import utils.data as utils
 
 import os
 import numpy as np
 import lpips
 
-import model.p_space as p_space
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -174,3 +175,21 @@ def run_optimization(data, id, init,
     print("Saving Loss: {}".format(path_loss))
     np.save(path_loss, np.array(loss_list))
   return loss_list
+
+
+# load images from directory
+data = utils.load_data(PATH_DIR)
+
+# testing downsampling
+test_name = 'only_embed'
+options_downsampling = ['area', 'bicubic', 'bilinear']
+options_lambdas = [0.001, 0.005]
+
+for mode in options_downsampling:
+  for lambda_v in options_lambdas:
+    loss_list = run_optimization(data, id = 13, 
+                                init = 'w_mean', 
+                                sub_fix=f"_{test_name}_{mode}_lambda_{lambda_v}",
+                                save_loss = True, 
+                                downsampling_mode=mode, 
+                                lambda_v=lambda_v)
