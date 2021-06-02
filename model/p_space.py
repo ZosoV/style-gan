@@ -1,5 +1,9 @@
 import torch
 import torch.nn as nn
+import numpy as np
+import os
+
+PCA_DIR = "stuff/data/pca/"
 
 def generate_samples(num_samples, G, device):
     """Function to generate N samples in p-space.
@@ -88,3 +92,30 @@ class mapping_P_N(nn.Module):
         result =  torch.matmul(torch.matmul( torch.diag(1/self.E), self.C.T), result)
 
         return result.T
+
+def get_PCA_results(q = 512, save = False, load = False, device = 'cuda:0'):
+
+  file_name = os.path.join(PCA_DIR,f"pca_results_q_{q}.npz")
+
+  # Apply PCA
+  if load:
+    print("Loading: ", file_name)
+    data = np.load(file_name)
+    C = torch.tensor(data['eigen_vectors']).to(device)
+    E = torch.tensor(data['eigen_values']).to(device)
+    mean = torch.tensor(data['mean']).to(device)
+    S = torch.tensor(data['singulars']).to(device)
+
+  else:
+    # q are the used principal component
+    X = generate_samples(1e6)
+    C, E, mean, S = apply_PCA(X, q = q)
+
+  if save:
+    print("Saving: ", file_name)
+    np.savez(file_name, eigen_vectors =C.cpu().numpy(), 
+                        eigen_values =E.cpu().numpy(),
+                        mean = mean.cpu().numpy(),
+                        singulars = S.cpu().numpy())
+
+  return C, E, mean, S

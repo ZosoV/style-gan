@@ -13,3 +13,5 @@ model/__pycache__/
 
 dnnlib/__pycache__/
 torch_utils/ops/__pycache__/
+utils/__pycache__/
+model/__pycache__/
