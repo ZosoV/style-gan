@@ -28,6 +28,20 @@ PATH_DIR = "stuff/data/input/"
 EXPECTED_RESULTS = "stuff/data/Peihao_result/"
 SAVING_DIR = 'stuff/results/improved_embedding_v3/'
 
+# Loading the pretrained model
+G = mu.load_pretrained_model(file_name="ffhq.pkl", space='w',device = DEVICE)
+
+# Pixel-Wise MSE Loss
+MSE_Loss = nn.MSELoss(reduction="mean")
+
+# Load VGG16 feature detector. # StyleGANv2 version of metric
+perceptual_vgg16 = lpips.LPIPS(net='vgg',version='0.0').to(DEVICE)
+
+# affine transformation to P_N+
+C, E, mean, S = p_space.get_PCA_results(q = 512, load = True, device = DEVICE)
+affine_PN = p_space.mapping_P_N(C, S, mean)
+
+
 #defining function to calculate loss
 def calculate_loss(synth_img, reference_img, w_opt, perceptual_net, MSE_Loss, affine_PN, condition_function = None, downsampling_mode = 'bicubic', lambda_v = 0.001):
   
@@ -76,19 +90,6 @@ def calculate_loss(synth_img, reference_img, w_opt, perceptual_net, MSE_Loss, af
   regularizer = lambda_v * (torch.linalg.norm(affine_PN(w_opt)) ** 2)
 
   return mse_loss, perceptual_loss, regularizer
-
-# Loading the pretrained model
-G = mu.load_pretrained_model(file_name="ffhq.pkl", space='w',device = DEVICE)
-
-# Pixel-Wise MSE Loss
-MSE_Loss = nn.MSELoss(reduction="mean")
-
-# Load VGG16 feature detector. # StyleGANv2 version of metric
-perceptual_vgg16 = lpips.LPIPS(net='vgg',version='0.0').to(DEVICE)
-
-# affine transformation to P_N+
-C, E, mean, S = p_space.get_PCA_results(q = 512, load = True, device = DEVICE)
-affine_PN = p_space.mapping_P_N(C, S, mean)
 
 def run_optimization(data, id, init, 
                     condition_function = None, 
@@ -175,7 +176,6 @@ def run_optimization(data, id, init,
     print("Saving Loss: {}".format(path_loss))
     np.save(path_loss, np.array(loss_list))
   return loss_list
-
 
 # load images from directory
 data = utils.load_data(PATH_DIR)

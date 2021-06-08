@@ -3,6 +3,7 @@ import cv2
 import matplotlib.pyplot as plt
 import glob
 import os
+import torch
 
 def load_image(path):
     if(path[-3:]=='bmp' or path[-3:]=='jpg' or path[-3:]=='png'):
@@ -44,3 +45,43 @@ def display_data(data, ncols=4):
           axs[i,j].set_title("Image ID: {}".format(idx))
           axs[i,j].axis('off')
           idx += 1
+
+#Load image from a folder to a pytorch tensor
+def build_tensor_results(path_generated, path_references, device):
+  """Load generated and reference images from folder to a tensor.
+     The tensor has the shape: [n_images, 2, C, H, W]
+
+     The second dimension corresponds to the reference and generated image
+     in that order.
+
+  Args:
+      path_generated ([str]): path where the generated images are stored
+      path_references ([str]): path where the reference images are stored
+      device ([torch device]): device to perform the metric calculation
+
+  Returns:
+      [tensor]: tensor with generated and reference images shape: [n_images, 2, C, H, W]
+  """
+  input_data = load_data(path_references)
+
+  generated_imgs = load_data(path_generated)
+
+  full_batches = []
+
+  for i in range(12):
+    references = input_data[i]['img']
+    synthetics = generated_imgs[i]['img']
+
+    batch_data = np.stack([synthetics, references], axis = 0)
+
+    full_batches.append(batch_data)
+
+  full_batches = np.array(full_batches)
+  print("full_batches numpy: ", full_batches.shape)
+
+  # convert to pytorch tensor
+  full_batches = torch.tensor(full_batches, device = device, dtype = torch.float32)
+  full_batches = full_batches.permute(0, 1, 4, 2, 3)
+  print("full_batches tensor: ", full_batches.size())
+
+  return full_batches
