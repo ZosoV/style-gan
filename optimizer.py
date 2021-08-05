@@ -6,7 +6,8 @@ from torchvision import transforms
 
 import model.model_utils as mu
 import model.p_space as p_space
-import utils.data as utils
+import utils.data as u_data
+import utils.images as u_images
 
 import os
 import numpy as np
@@ -15,7 +16,7 @@ import lpips
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-ITERATIONS = 1300
+ITERATIONS = 2000
 SAVE_STEP = 100
 
 # OPTIMIZER
@@ -26,91 +27,85 @@ EPSILON = 1e-8
 
 PATH_DIR = "stuff/data/input/"
 EXPECTED_RESULTS = "stuff/data/Peihao_result/"
-SAVING_DIR = 'stuff/results/improved_embedding_v3/'
+SAVING_DIR = 'stuff/results/improved_embedding/'
 
 # Loading the pretrained model
 G = mu.load_pretrained_model(file_name="ffhq.pkl", space='w',device = DEVICE)
 
 # Pixel-Wise MSE Loss
-MSE_Loss = nn.MSELoss(reduction="mean")
+MSE_Loss = nn.MSELoss(reduction="mean").to(DEVICE)
 
 # Load VGG16 feature detector. # StyleGANv2 version of metric
-perceptual_vgg16 = lpips.LPIPS(net='vgg',version='0.0').to(DEVICE)
+perceptual_vgg16 = lpips.LPIPS(net='vgg').to(DEVICE)
 
 # affine transformation to P_N+
-C, E, mean, S = p_space.get_PCA_results(q = 512, load = True, device = DEVICE)
-affine_PN = p_space.mapping_P_N(C, S, mean)
+C, E, mean, S = p_space.get_PCA_results(G, DEVICE, load=True)
+map2PN = p_space.mapping_P_N(C, S, mean)
 
 
 #defining function to calculate loss
-def calculate_loss(synth_img, reference_img, w_opt, perceptual_net, MSE_Loss, affine_PN, condition_function = None, downsampling_mode = 'bicubic', lambda_v = 0.001):
+def calculate_loss(big_gen_img, big_ref_image, small_ref_image, w_opt, perceptual_net, 
+                MSE_Loss, map2PN, condition_function = None, lambda_v = 0.001):
   
   # get the synth img to [0, 1] to measure the perceptual loss
-  synth_img = (synth_img + 1) / 2
-  # synth_img = (synth_img-torch.min(synth_img))/(torch.max(synth_img)-torch.min(synth_img))
+  # big_gen_img = (big_gen_img + 1) / 2
+
+  # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
+  down_transform = u_images.BicubicDownSample(factor=1024 // 256, device = DEVICE)
+  small_gen_img = down_transform(big_gen_img)
 
   # transfor according to condition function
   if condition_function is not None:
-    synth_img = condition_function(synth_img)
+    big_gen_img = condition_function(big_gen_img)
+    small_gen_img = condition_function(small_gen_img)
 
-  # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
-  tmp_synth_img = F.interpolate(synth_img, size=(256, 256), mode=downsampling_mode)
-  tmp_reference_img = F.interpolate(reference_img, size=(256, 256), mode=downsampling_mode)
+  # Normalize before to pass to perceptual network
+  # transform = transforms.Compose([
+  #   transforms.Normalize(
+  #       mean=[0.485, 0.456, 0.406],
+  #       std=[0.229, 0.224, 0.225],
+  #   ),
+  # ])
 
-  transform = transforms.Compose([
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225],
-    ),
-  ])
-
-  # Normalize to [-1,1]
-  # tmp_synth_img = 2*tmp_synth_img - 1
-  # tmp_reference_img = 2*tmp_reference_img - 1
-  tmp_synth_img = transform(tmp_synth_img)
-  tmp_reference_img = transform(tmp_reference_img)
+  # Normalize using ImageNet mean and std
+  # small_gen_img = transform(small_gen_img)
+  # small_ref_image = transform(small_ref_image)
 
   # calculate LPIPS Perceptual Loss
-  # Features for synth images.
-  perceptual_loss = perceptual_net.forward(tmp_reference_img, tmp_synth_img)
-
-  # normalize to [0,1] to measure the MSE loss
-  # synth_img = synth_img / 255.0
-
-  # normalize to [-1,1]
-  synth_img = 2*synth_img - 1
-  reference_img = 2*reference_img - 1
-  # synth_img = transform(synth_img)
-  # reference_img = transform(reference_img)
+  perceptual_loss = perceptual_net.forward(small_ref_image, small_gen_img)
 
   # calculate MSE Loss
-  mse_loss = MSE_Loss(synth_img,reference_img) 
+  mse_loss = MSE_Loss(big_gen_img,big_ref_image) 
 
   # adding the regulizer part
-  regularizer = lambda_v * (torch.linalg.norm(affine_PN(w_opt)) ** 2)
+  regularizer = lambda_v * (torch.linalg.norm(map2PN(w_opt)) ** 2)
 
   return mse_loss, perceptual_loss, regularizer
 
 def run_optimization(data, id, init, 
                     condition_function = None, 
                     sub_fix ="", 
-                    downsampling_mode = 'bicubic', 
                     save_loss = False, 
                     lambda_v = 0.001):
 
   # get the image sample
   basename = data[id]['name'].split(".")[0] + sub_fix
-  img = torch.tensor(data[id]['img'].copy(), device = DEVICE, dtype = torch.float32)
-  img = img.permute(2, 0, 1).unsqueeze(0)
 
-  img = img / 255.0
+  big_image = transforms.ToTensor()(data[id]['img']).unsqueeze(0).to(DEVICE)
+  small_image = u_images.lanczos_transform(data[id]['img'], DEVICE)
+
+  big_image = 2*big_image - 1
+  small_image = 2*small_image - 1
+
+  print("small_image", small_image.size())
   
   # convert according to confition_function
   if condition_function is not None:
-    img = condition_function(img)
+    big_image = condition_function(big_image)
+    small_image = condition_function(small_image)
 
   # define the init latent
-  w_opt = mu.get_initial_latent(init, DEVICE)
+  w_opt = mu.get_initial_latent(init, G, DEVICE)
 
   optimizer = optim.Adam({w_opt},lr=LEARNING_RATE,betas=(BETA_1,BETA_2),eps=EPSILON)
 
@@ -128,14 +123,13 @@ def run_optimization(data, id, init,
       
       # get the loss and backpropagate the gradients
       mse_loss, perceptual_loss, regularizer_term = calculate_loss(synth_img,
-                                                img,
-                                                # target_features,
+                                                big_image,
+                                                small_image,
                                                 w_opt,
                                                 perceptual_vgg16, 
                                                 MSE_Loss, 
-                                                affine_PN,
+                                                map2PN,
                                                 condition_function,
-                                                downsampling_mode,
                                                 lambda_v)
       loss = mse_loss + perceptual_loss + regularizer_term
       loss.backward()
@@ -178,18 +172,40 @@ def run_optimization(data, id, init,
   return loss_list
 
 # load images from directory
-data = utils.load_data(PATH_DIR)
+data = u_data.load_data(PATH_DIR)
 
 # testing downsampling
 test_name = 'only_embed'
-options_downsampling = ['area', 'bicubic', 'bilinear']
-options_lambdas = [0.001, 0.005]
+options_lambdas = [0.001, 0.005, 0.01]
 
-for mode in options_downsampling:
-  for lambda_v in options_lambdas:
-    loss_list = run_optimization(data, id = 13, 
-                                init = 'w_mean', 
-                                sub_fix=f"_{test_name}_{mode}_lambda_{lambda_v}",
-                                save_loss = True, 
-                                downsampling_mode=mode, 
-                                lambda_v=lambda_v)
+# for i in range(len(data)):
+#   for lambda_v in options_lambdas:
+#     loss_list = run_optimization(data, id = i, 
+#                                 init = 'w_mean',
+#                                 sub_fix=f"_{test_name}_lambda_{lambda_v}",
+#                                 save_loss = True, 
+#                                 lambda_v=lambda_v)
+
+condition_function_options = {
+  "colorization" : mu.convert2grayscale,
+  "inpainting"  : mu.mask_function
+  # "super_resolution" : u_images.BicubicDownSample(factor=1024 // 256)
+}
+
+for name, condition_function in condition_function_options.items():
+  for i in range(len(data)):
+    for lambda_v in options_lambdas:
+      loss_list = run_optimization(data, id = i, 
+                                  init = 'w_mean',
+                                  sub_fix=f"_{name}_lambda_{lambda_v}",
+                                  save_loss = True, 
+                                  lambda_v=lambda_v,
+                                  condition_function = condition_function)
+
+# for lambda_v in options_lambdas:
+#   loss_list = run_optimization(data, id = 11, 
+#                               init = 'w_mean',
+#                               sub_fix=f"_{test_name}_lambda_{lambda_v}",
+#                               save_loss = True, 
+#                               lambda_v=lambda_v)
+                                

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import glob
 import os
 import torch
+from PIL import Image
 
 def load_image(path):
     if(path[-3:]=='bmp' or path[-3:]=='jpg' or path[-3:]=='png'):
@@ -14,6 +15,20 @@ def load_image(path):
     return img
 
 def load_data(directory, interval = None):
+  """ Load images from a folder in a dictionary structure. Each image is loaded with
+      PIL library and for acces to an specific images use:
+
+        dict[id]['img'] 
+      
+      Also, it is save the name of the original file in dict[id]['name']
+
+  Args:
+      directory ([str]): path where the images are
+      interval ([np.r_]): (optional) interval to select the images e.g.: np.r_[0:12]
+
+  Returns:
+      [dict]: dictionary with the images loaded.
+  """
 
   if interval is None:
     files = sorted(glob.glob(os.path.join(directory + "*.png")))
@@ -23,7 +38,8 @@ def load_data(directory, interval = None):
   data = {}
   for idx, file in enumerate(files):
     img_dir = {
-        "img": load_image(file),
+        # "img": load_image(file),
+        "img": Image.open(file),
         "name": os.path.basename(os.path.normpath(file))
     }
     data[idx] = img_dir

@@ -25,36 +25,48 @@ def generate_samples(num_samples, G, device):
     X = G.mapping(X, None) # TODO: check what happend with truncation?
 
     # 2. Mapping w-space samples to p-space
-    X = nn.LeakyReLU(negative_slope=5.0)(X)
+    X = nn.LeakyReLU(negative_slope=5.0)(X).squeeze(1)
+    print("p: ", X.size())
 
-    return X.squeeze(1)
+    return X.detach().cpu().numpy()
 
-def apply_PCA(samples, q = 512):
-    """Perform the PCA of samples X, and return relevant tensors for the embedding algorithm
+# def apply_PCA(samples, q = 512):
+#     """Perform the PCA of samples X, and return relevant tensors for the embedding algorithm
 
-    Args:
-        samples ([tensor]): tensor with n samples in p-space. Shape: [n,512]
-        q (int, optional):  number of pricipal components to return. Defaults to 512.
+#     Args:
+#         samples ([tensor]): tensor with n samples in p-space. Shape: [n,512]
+#         q (int, optional):  number of pricipal components to return. Defaults to 512.
 
-    Returns:
-        V [tensor]: the V columns represent the principal directions. Shape [512,512]
-        E [tensor]: contains the eigenvalues. Shape [512]
-        mean [tensor]: the mean vector of all the samples. Shape [512]
-        S [tensor]: contains the singular values: Shape [512]
-    """
-    n_samples, n_features = samples.size()
+#     Returns:
+#         V [tensor]: the V columns represent the principal directions. Shape [512,512]
+#         E [tensor]: contains the eigenvalues. Shape [512]
+#         mean [tensor]: the mean vector of all the samples. Shape [512]
+#         S [tensor]: contains the singular values: Shape [512]
+#     """
+#     n_samples, n_features = samples.size()
 
-    # get the 20 principal components
-    U,S,V = torch.pca_lowrank(samples, q=q, center=True, niter=15)
+#     # get the 20 principal components
+#     U,S,V = torch.pca_lowrank(samples, q=q, center=True, niter=15)
 
-    mean_vector = torch.mean(samples, dim=0)
-    print("mean vector: ", mean_vector.size())
+#     mean_vector = torch.mean(samples, dim=0)
+#     print("mean vector: ", mean_vector.size())
 
-    eigen_values = (S**2)/(n_samples - 1)
-    print("eigenvalues: ", eigen_values.size())
+#     eigen_values = (S**2)/(n_samples - 1)
+#     print("eigenvalues: ", eigen_values.size())
 
-    print("eigenvectors: ", V.size())
-    return V, eigen_values, mean_vector, S
+#     print("eigenvectors: ", V.size())
+#     return V, eigen_values, mean_vector, S
+
+def apply_PCA(samples, n_components, device):
+    pca = PCA(n_components=n_components)
+    pca.fit(samples)
+        
+    components = torch.tensor(pca.components_.T).to(device)
+    eigen_vals = torch.tensor(pca.explained_variance_).to(device)
+    singular_vals = torch.tensor(pca.singular_values_).to(device)
+    mean = torch.tensor(pca.mean_).to(device)
+    
+    return components, eigen_vals, mean, singular_vals
 
 class mapping_P_N(nn.Module):
     """Module to map the current extended space w+ to the extended space p_N+ 
@@ -93,29 +105,29 @@ class mapping_P_N(nn.Module):
 
         return result.T
 
-def get_PCA_results(q = 512, save = False, load = False, device = 'cuda:0'):
+def get_PCA_results(G, device, n_components = 512, save = False, load = False):
 
-  file_name = os.path.join(PCA_DIR,f"pca_results_q_{q}.npz")
-
+  file_name = os.path.join(PCA_DIR,f"pca_results_n_components_{n_components}.npz")
+    
   # Apply PCA
   if load:
     print("Loading: ", file_name)
     data = np.load(file_name)
-    C = torch.tensor(data['eigen_vectors']).to(device)
-    E = torch.tensor(data['eigen_values']).to(device)
+    components = torch.tensor(data['eigen_vectors']).to(device)
+    eigen_vals = torch.tensor(data['eigen_values'],dtype = torch.float).to(device)
     mean = torch.tensor(data['mean']).to(device)
-    S = torch.tensor(data['singulars']).to(device)
+    singular_vals = torch.tensor(data['singulars']).to(device)
 
   else:
     # q are the used principal component
-    X = generate_samples(1e6)
-    C, E, mean, S = apply_PCA(X, q = q)
+    X = generate_samples(1e6, G, device)
+    components, eigen_vals, mean, singular_vals = apply_PCA(X, n_components, device)
 
   if save:
     print("Saving: ", file_name)
-    np.savez(file_name, eigen_vectors =C.cpu().numpy(), 
-                        eigen_values =E.cpu().numpy(),
+    np.savez(file_name, eigen_vectors = components.cpu().numpy(), 
+                        eigen_values = eigen_vals.cpu().numpy(),
                         mean = mean.cpu().numpy(),
-                        singulars = S.cpu().numpy())
+                        singulars = singular_vals.cpu().numpy())
 
-  return C, E, mean, S
+  return components, eigen_vals, mean, singular_vals
