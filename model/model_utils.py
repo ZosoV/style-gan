@@ -26,7 +26,7 @@ def get_mean_latent( G, device, n_samples = 5e5):
   z = torch.randn((int(n_samples), 512), device=device)
   batch_size = int(1e5)
 
-  w_mean = torch.zeros((1,18,512),requires_grad=True,device=device)
+  w_mean = torch.zeros((1,G.num_ws,512),requires_grad=True,device=device)
   for i in range(int(n_samples/batch_size)):
     w = G.mapping(z[i*batch_size:(i+1)*batch_size,:], None)
     w = torch.sum(w, dim = 0).unsqueeze(0)
@@ -36,13 +36,18 @@ def get_mean_latent( G, device, n_samples = 5e5):
 
   return w_mean.clone().detach().requires_grad_(True)
 
-def get_initial_latent(init, G, device):
+def get_initial_latent(init, G, device, high_gpu_memory = False):
   if init == "w_mean":
-    w_opt = get_mean_latent(G, device)
+    if high_gpu_memory:
+      z = torch.randn((int(5e5), 512), device=device)
+      w_opt = G.mapping(z, None).mean(dim = 0).unsqueeze(0)
+      w_opt = w_opt.detach().requires_grad_(True)
+    else:
+      w_opt = get_mean_latent(G,device)
   elif init == "w_zeros":
-    w_opt = torch.zeros((1,18,512),requires_grad=True,device=device)
+    w_opt = torch.zeros((1,G.num_ws,512),requires_grad=True,device=device)
   elif init == "w_random":
-    w_opt = torch.cuda.FloatTensor(1,18,512).uniform_(-1,1).requires_grad_()
+    w_opt = torch.cuda.FloatTensor(1,G.num_ws,512).uniform_(-1,1).requires_grad_()
 
   return w_opt
 
