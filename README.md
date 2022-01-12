@@ -12,6 +12,6 @@ This work was done during my research internship at [King Abdullah University of
 
 ## Release
 
-* For learning purposes, you can explore the notebooks at [notebooks/](./notebooks/), where all the programming process was documented. I recommend to explore this first because you can a better idea about my process step-by-step.
+* For learning purposes, you can explore the notebooks at [notebooks/](./notebooks/), where all the programming process was documented. I recommend to explore this first because you can have a better idea about my process step-by-step.
 * The [optimzer.py](optimizer.py) script encloses the main optimization algorithm for embeding images into the StyleGAN latent space.
 * The scripts [inpainting.py](inpainting.py), [super_resolution.py](super_resolution.py), [colorization.py](colorization.py), [cross_domain.py](cross_domain.py) are scripts based on `optimizer.py`, but with few settings to create different processing images tasks.
