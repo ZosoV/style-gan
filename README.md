@@ -1,5 +1,7 @@
 # StyleGAN Embedding Algorithms
 
+[**Project page**](https://zosov.github.io/portfolio/embedding_style_gan/index.html)
+
 This repository aims to reproduce and study some fundamental embedding algorithms, particularly [Image2StyleGAN: How to Embed Images Into the StyleGAN Latent Space?](https://arxiv.org/abs/1904.03189) and [Improved StyleGAN Embedding: Where are the Good Latents?](https://arxiv.org/abs/2012.09036). Also, it is intended to add further experimentations and review some editing operations.
 
 This work was done during my research internship at [King Abdullah University of Science and Technology (KAUST)](https://www.kaust.edu.sa/en), and presented as an article poster for the [Eastern European Machine Learning Summer School - EEML 2021](https://www.eeml.eu/previous-editions/eeml2021).
